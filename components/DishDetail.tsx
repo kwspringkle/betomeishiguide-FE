@@ -13,6 +13,7 @@ import type { DishRestaurantDetail, RestaurantByDish, RelatedDish, DishReview } 
 import { toast } from "sonner"
 import { useUserLocation } from "@/components/UserLocationProvider"
 import { getRestaurantDistanceMetersWithCache } from "@/lib/vietmapDistance"
+import { emitFavoritesChanged, useFavoritesChanged } from "@/lib/favoritesSync"
 
 interface DishDetailPageProps {
   dishRestaurantId: string
@@ -118,6 +119,46 @@ export function DishDetailPage({ dishRestaurantId, restaurantId }: DishDetailPag
 
     fetchDishDetail()
   }, [dishRestaurantId, restaurantId])
+
+  const refreshLikedFromFavorites = async (dishId: number) => {
+    try {
+      const favoritesResult = await favoriteApi.getAllFavorites()
+      if (favoritesResult.status === 'success' && favoritesResult.data) {
+        const isAlreadyLiked = favoritesResult.data.some(
+          fav => fav.dishId === dishId
+        )
+        setLiked(isAlreadyLiked)
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const resolveFavoriteIdForDish = async (dishId: number, restaurantId?: number) => {
+    try {
+      const favoritesResult = await favoriteApi.getAllFavorites()
+      if (favoritesResult.status !== 'success' || !favoritesResult.data) return null
+
+      const exact = favoritesResult.data.find((fav: any) => {
+        if (fav?.dishId !== dishId) return false
+        // If backend includes restaurantId, prefer exact match; otherwise allow null/undefined
+        if (typeof restaurantId === 'number') {
+          if (fav?.restaurantId === restaurantId) return true
+          if (fav?.restaurantId == null) return true
+        }
+        return true
+      })
+
+      return typeof exact?.id === 'number' ? exact.id : null
+    } catch {
+      return null
+    }
+  }
+
+  useFavoritesChanged(() => {
+    if (!dish) return
+    refreshLikedFromFavorites(dish.dishId)
+  })
 
   // Fetch restaurants serving the same dish
   useEffect(() => {
@@ -238,18 +279,50 @@ export function DishDetailPage({ dishRestaurantId, restaurantId }: DishDetailPag
       setIsLiking(true)
       
       if (liked) {
-        // Unlike - Call API to remove favorite with dishId and restaurantId
-        const result = await favoriteApi.removeFavorite({
-          dishId: dish.dishId,
-          restaurantId: dish.restaurantId
-        })
+        // Unlike - Robust delete:
+        // 1) delete by favoriteId (works even if restaurantId is null)
+        // 2) fallback: delete by dishId+restaurantId
+        // 3) fallback: delete by dishId only
+        let removed = false
 
-        if (result.status === 'success') {
+        const favoriteId = await resolveFavoriteIdForDish(dish.dishId, dish.restaurantId)
+        if (favoriteId != null) {
+          try {
+            const r = await favoriteApi.removeFavorite({ favoriteId })
+            removed = r.status === 'success'
+          } catch {
+            // continue
+          }
+        }
+
+        if (!removed) {
+          try {
+            const r = await favoriteApi.removeFavorite({
+              dishId: dish.dishId,
+              restaurantId: dish.restaurantId,
+            })
+            removed = r.status === 'success'
+          } catch {
+            // continue
+          }
+        }
+
+        if (!removed) {
+          try {
+            const r = await favoriteApi.removeFavorite({ dishId: dish.dishId })
+            removed = r.status === 'success'
+          } catch {
+            // continue
+          }
+        }
+
+        if (removed) {
           setLiked(false)
           setLikeCount(prev => Math.max(0, prev - 1))
           toast.success('いいねを取り消しました')
+          emitFavoritesChanged()
         } else {
-          toast.error(result.message || 'いいねの取り消しに失敗しました')
+          toast.error('いいねの取り消しに失敗しました')
         }
       } else {
         // Like - Call API to add favorite
@@ -266,6 +339,7 @@ export function DishDetailPage({ dishRestaurantId, restaurantId }: DishDetailPag
           } else {
             toast.success('お気に入りに追加しました')
           }
+          emitFavoritesChanged()
         } else {
           toast.error(result.message || 'お気に入りの追加に失敗しました')
         }

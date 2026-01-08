@@ -11,6 +11,7 @@ import { AISupportModal } from "@/components/AISupportModal"
 import { dishApi, favoriteApi } from "@/api/api"
 import type { Dish } from "@/api/types"
 import { toast } from "sonner"
+import { emitFavoritesChanged, useFavoritesChanged } from "@/lib/favoritesSync"
 
 interface RankingItem {
   id: string
@@ -213,39 +214,43 @@ export function RankingPage() {
     fetchDishRankings()
   }, [])
 
+  const refreshFavorites = async () => {
+    try {
+      const result = await favoriteApi.getAllFavorites()
+      if (result.status === 'success' && result.data) {
+        // Create a set of favorite dish names for quick lookup
+        const favoriteNames = new Set(result.data.map(fav => fav.dishesname))
+        setFavoriteDishNames(favoriteNames)
+
+        // Create a map of dish name to favoriteId for deletion
+        const idMap = new Map<string, number>()
+        result.data.forEach(fav => {
+          idMap.set(fav.dishesname, fav.id)
+        })
+        setFavoriteIdMap(idMap)
+
+        // Also update likedItems based on dish IDs that match
+        const likedIds = new Set<string>()
+        dishRankings.forEach(dish => {
+          if (favoriteNames.has(dish.name)) {
+            likedIds.add(dish.id)
+          }
+        })
+        setLikedItems(likedIds)
+      }
+    } catch (error) {
+      console.error('Error fetching favorites:', error)
+    }
+  }
+
   // Fetch user's favorites to check which dishes are already favorited
   useEffect(() => {
-    const fetchFavorites = async () => {
-      try {
-        const result = await favoriteApi.getAllFavorites()
-        if (result.status === 'success' && result.data) {
-          // Create a set of favorite dish names for quick lookup
-          const favoriteNames = new Set(result.data.map(fav => fav.dishesname))
-          setFavoriteDishNames(favoriteNames)
-          
-          // Create a map of dish name to favoriteId for deletion
-          const idMap = new Map<string, number>()
-          result.data.forEach(fav => {
-            idMap.set(fav.dishesname, fav.id)
-          })
-          setFavoriteIdMap(idMap)
-          
-          // Also update likedItems based on dish IDs that match
-          const likedIds = new Set<string>()
-          dishRankings.forEach(dish => {
-            if (favoriteNames.has(dish.name)) {
-              likedIds.add(dish.id)
-            }
-          })
-          setLikedItems(likedIds)
-        }
-      } catch (error) {
-        console.error('Error fetching favorites:', error)
-      }
-    }
-
-    fetchFavorites()
+    refreshFavorites()
   }, [dishRankings])
+
+  useFavoritesChanged(() => {
+    refreshFavorites()
+  })
 
   const currentRankings = rankingType === "dish" ? dishRankings : mockRestaurantRankings
 
@@ -261,7 +266,24 @@ export function RankingPage() {
       if (likedItems.has(id) || favoriteDishNames.has(dishName)) {
         // Use dishId for ranking page deletion
         const dishId = parseInt(id)
-        const result = await favoriteApi.removeFavorite({ dishId: dishId })
+        let result: any = null
+        try {
+          result = await favoriteApi.removeFavorite({ dishId: dishId })
+        } catch {
+          // fallback below
+        }
+
+        // Fallback: delete by favoriteId if available
+        if (!result || result.status !== 'success') {
+          const favoriteId = favoriteIdMap.get(dishName)
+          if (typeof favoriteId === 'number') {
+            try {
+              result = await favoriteApi.removeFavorite({ favoriteId })
+            } catch {
+              // keep failure
+            }
+          }
+        }
         
         if (result.status === 'success') {
           setLikedItems((prev) => {
@@ -282,6 +304,7 @@ export function RankingPage() {
             return newMap
           })
           toast.success("お気に入りから削除しました")
+          emitFavoritesChanged()
           // Refresh ranking list from API
           await fetchDishRankings()
         } else {
@@ -304,6 +327,7 @@ export function RankingPage() {
           return newSet
         })
         toast.success("お気に入りに追加しました")
+        emitFavoritesChanged()
         // Refresh ranking list from API
         await fetchDishRankings()
       } else if (result.status === 'info') {

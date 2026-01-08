@@ -55,6 +55,7 @@ export interface DishListResponse {
 export interface Favorite {
   id: number;
   dishId?: number; // Dish ID for linking to dish detail page
+  restaurantId?: number | null; // Optional: some APIs include this
   dishesname: string; // Note: backend uses "dishesname" not "dishName"
   restaurantname?: string; // Legacy field name
   restaurantName?: string; // New field name from API

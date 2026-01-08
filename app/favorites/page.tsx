@@ -7,6 +7,7 @@ import { TopHeader } from "@/components/TopHeader"
 import { AISupportModal } from "@/components/AISupportModal"
 import { favoriteApi } from "@/api/api"
 import { toast } from "sonner"
+import { emitFavoritesChanged, useFavoritesChanged } from "@/lib/favoritesSync"
 
 interface FavoriteDish {
   id: number
@@ -46,6 +47,10 @@ export default function FavoritesPage() {
   useEffect(() => {
     fetchFavorites()
   }, [])
+
+  useFavoritesChanged(() => {
+    fetchFavorites()
+  })
 
 
 
@@ -104,6 +109,7 @@ export default function FavoritesPage() {
         // Remove from local state
         setFavorites(prev => prev.filter(item => item.id !== favoriteId))
         toast.success('お気に入りから削除しました')
+        emitFavoritesChanged()
       } else {
         toast.error(result.message || 'お気に入りの削除に失敗しました')
       }
