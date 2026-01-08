@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { X, Send, Image as ImageIcon } from "lucide-react"
 
 interface Message {
@@ -29,11 +30,12 @@ interface AISupportModalProps {
 }
 
 export function AISupportModal({ isOpen, onClose }: AISupportModalProps) {
+  const [mounted, setMounted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
       type: 'bot',
-      content: 'おはようございます！'
+      content: 'こんにちは！'
     }
   ])
   const [inputValue, setInputValue] = useState('')
@@ -43,6 +45,10 @@ export function AISupportModal({ isOpen, onClose }: AISupportModalProps) {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     scrollToBottom()
@@ -106,11 +112,9 @@ export function AISupportModal({ isOpen, onClose }: AISupportModalProps) {
     }
   }
 
-  return (
-    <>
-      {/* Modal content */}
-      <div className={`fixed bottom-24 right-8 z-50 p-4 transition-opacity duration-200 ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-        <div className="bg-gradient-to-br from-blue-100 to-blue-200 rounded-3xl shadow-2xl w-80 h-[520px] flex flex-col animate-in fade-in-0 zoom-in-95 duration-200">
+  const content = (
+    <div className={`fixed bottom-24 right-8 z-50 p-4 transition-opacity duration-200 ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+      <div className="bg-gradient-to-br from-blue-100 to-blue-200 rounded-3xl shadow-2xl w-80 h-[520px] flex flex-col animate-in fade-in-0 zoom-in-95 duration-200">
           {/* Modal header */}
           <div className="flex justify-between items-center p-4 border-b border-blue-300/50">
             <h3 className="text-lg font-semibold text-blue-900">紹介サポート</h3>
@@ -200,9 +204,11 @@ export function AISupportModal({ isOpen, onClose }: AISupportModalProps) {
               </button>
             </div>
           </div>
-        </div>
       </div>
-    </>
+    </div>
   )
+
+  if (!mounted) return null
+  return createPortal(content, document.body)
 }
 

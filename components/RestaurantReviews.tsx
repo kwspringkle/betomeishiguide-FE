@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Search, ChevronRight, Star, MessageCircle, ChevronLeft, Send } from "lucide-react"
+import { Search, ChevronRight, Star, MessageCircle, ChevronLeft, Send, Pencil, Trash2, Check, X } from "lucide-react"
 import { TopHeader } from "@/components/TopHeader"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import { AISupportModal } from "@/components/AISupportModal"
 import { restaurantApi } from "@/api/api"
 import type { RestaurantReview } from "@/api/types"
 import { toast } from "sonner"
+import { getCurrentUserId } from "@/lib/userScope"
 
 interface RestaurantReviewsPageProps {
   restaurantId?: number
@@ -126,6 +127,13 @@ export function RestaurantReviewsPage({ restaurantId }: RestaurantReviewsPagePro
   const [showSupportModal, setShowSupportModal] = useState(false)
 
   const [nationalFilter, setNationalFilter] = useState<"ALL" | "日本" | "ベトナム">("ALL")
+  const [mineOnly, setMineOnly] = useState(false)
+  const currentUserId = getCurrentUserId()
+
+  const [editingReviewId, setEditingReviewId] = useState<number | null>(null)
+  const [editRating, setEditRating] = useState<number>(5)
+  const [editComment, setEditComment] = useState("")
+  const [isMutating, setIsMutating] = useState(false)
 
   const normalizeNational = (value?: string | null): "日本" | "ベトナム" | null => {
     const v = (value ?? "").trim()
@@ -167,7 +175,7 @@ export function RestaurantReviewsPage({ restaurantId }: RestaurantReviewsPagePro
 
   useEffect(() => {
     setDisplayedCount(10)
-  }, [nationalFilter])
+  }, [nationalFilter, mineOnly])
 
   // Fetch reviews if restaurantId is provided
   useEffect(() => {
@@ -227,10 +235,68 @@ export function RestaurantReviewsPage({ restaurantId }: RestaurantReviewsPagePro
     setDisplayedCount((prev) => Math.min(prev + 10, filteredAndSortedReviews.length))
   }
 
+  const startEdit = (review: RestaurantReview) => {
+    setEditingReviewId(review.restaurantReviewId)
+    setEditRating(Math.round(review.rating) || 5)
+    setEditComment(review.comment ?? "")
+  }
+
+  const cancelEdit = () => {
+    setEditingReviewId(null)
+    setEditRating(5)
+    setEditComment("")
+  }
+
+  const saveEdit = async () => {
+    if (editingReviewId == null) return
+    if (!editComment.trim()) {
+      toast.error('コメントを入力してください')
+      return
+    }
+
+    try {
+      setIsMutating(true)
+      await restaurantApi.updateRestaurantReview({
+        id: editingReviewId,
+        rating: editRating,
+        comment: editComment.trim(),
+      })
+      toast.success('レビューを更新しました')
+      await fetchReviews()
+      cancelEdit()
+    } catch (error) {
+      console.error('Error updating review:', error)
+      toast.error('レビューの更新に失敗しました')
+    } finally {
+      setIsMutating(false)
+    }
+  }
+
+  const deleteReview = async (restaurantReviewId: number) => {
+    if (!confirm('このレビューを削除しますか？')) return
+    try {
+      setIsMutating(true)
+      await restaurantApi.deleteRestaurantReview(restaurantReviewId)
+      toast.success('レビューを削除しました')
+      await fetchReviews()
+      if (editingReviewId === restaurantReviewId) cancelEdit()
+    } catch (error) {
+      console.error('Error deleting review:', error)
+      toast.error('レビューの削除に失敗しました')
+    } finally {
+      setIsMutating(false)
+    }
+  }
+
   const filteredAndSortedReviews = reviews
     .filter((review) => {
       if (nationalFilter === "ALL") return true
       return normalizeNational(review.national) === nationalFilter
+    })
+    .filter((review) => {
+      if (!mineOnly) return true
+      if (!currentUserId) return false
+      return review.userId === currentUserId
     })
     .slice()
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -277,7 +343,19 @@ export function RestaurantReviewsPage({ restaurantId }: RestaurantReviewsPagePro
 
           {/* Filter */}
           <section className="mb-4">
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-4">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={mineOnly}
+                  onChange={(e) => setMineOnly(e.target.checked)}
+                  className="h-4 w-4"
+                  aria-label="自分のレビューのみ表示"
+                  disabled={!currentUserId}
+                />
+                自分のレビュー
+              </label>
+
               <label className="text-sm text-muted-foreground">国籍</label>
               <select
                 value={nationalFilter}
@@ -367,12 +445,16 @@ export function RestaurantReviewsPage({ restaurantId }: RestaurantReviewsPagePro
               </div>
             ) : (
               <div className="space-y-6">
-                {filteredAndSortedReviews.slice(0, displayedCount).map((review) => (
-                  <Card
-                    key={review.restaurantReviewId}
-                    className="border-l-4 border-l-primary hover:shadow-lg transition-shadow"
-                  >
-                    <CardContent className="p-6">
+                {filteredAndSortedReviews.slice(0, displayedCount).map((review) => {
+                  const isMine = !!currentUserId && review.userId === currentUserId
+                  const isEditing = editingReviewId === review.restaurantReviewId
+
+                  return (
+                    <Card
+                      key={review.restaurantReviewId}
+                      className="border-l-4 border-l-primary hover:shadow-lg transition-shadow"
+                    >
+                      <CardContent className="p-6">
                       {/* Review Header */}
                       <div className="flex items-start gap-4 mb-4">
                         <div className="flex-shrink-0">
@@ -416,33 +498,117 @@ export function RestaurantReviewsPage({ restaurantId }: RestaurantReviewsPagePro
                                 })}
                               </p>
                             </div>
-                            <div className="flex items-center gap-1">
-                              {[...Array(5)].map((_, i) => (
-                                <Star
-                                  key={i}
-                                  size={18}
-                                  className={
-                                    i < Math.floor(review.rating)
-                                      ? 'fill-amber-400 text-amber-400'
-                                      : 'text-muted-foreground'
-                                  }
-                                />
-                              ))}
-                              <span className="text-sm font-medium text-foreground ml-2">
-                                {review.rating.toFixed(1)}
-                              </span>
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-1">
+                                {[...Array(5)].map((_, i) => (
+                                  <Star
+                                    key={i}
+                                    size={18}
+                                    className={
+                                      i < Math.floor(review.rating)
+                                        ? 'fill-amber-400 text-amber-400'
+                                        : 'text-muted-foreground'
+                                    }
+                                  />
+                                ))}
+                                <span className="text-sm font-medium text-foreground ml-2">
+                                  {review.rating.toFixed(1)}
+                                </span>
+                              </div>
+
+                              {isMine ? (
+                                <div className="flex items-center gap-1">
+                                  {isEditing ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={saveEdit}
+                                        disabled={isMutating}
+                                        className="p-1.5 rounded-md hover:bg-muted disabled:opacity-50"
+                                        aria-label="保存"
+                                      >
+                                        <Check className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={cancelEdit}
+                                        disabled={isMutating}
+                                        className="p-1.5 rounded-md hover:bg-muted disabled:opacity-50"
+                                        aria-label="キャンセル"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => startEdit(review)}
+                                      disabled={isMutating}
+                                      className="p-1.5 rounded-md hover:bg-muted disabled:opacity-50"
+                                      aria-label="編集"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteReview(review.restaurantReviewId)}
+                                    disabled={isMutating}
+                                    className="p-1.5 rounded-md hover:bg-muted disabled:opacity-50"
+                                    aria-label="削除"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         </div>
                       </div>
 
                       {/* Review Comment */}
-                      <p className="text-sm text-foreground mb-4 text-pretty leading-relaxed pl-18">
-                        {review.comment}
-                      </p>
-                    </CardContent>
-                  </Card>
-                ))}
+                      {isEditing ? (
+                        <div className="space-y-3 pl-18">
+                          <div className="flex items-center gap-2">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => setEditRating(star)}
+                                disabled={isMutating}
+                                className="transition-transform hover:scale-110 disabled:opacity-50"
+                                aria-label={`評価 ${star}`}
+                              >
+                                <Star
+                                  size={22}
+                                  className={
+                                    star <= editRating
+                                      ? "fill-amber-400 text-amber-400"
+                                      : "text-muted-foreground"
+                                  }
+                                />
+                              </button>
+                            ))}
+                            <span className="ml-2 text-sm font-semibold text-foreground">{editRating}.0</span>
+                          </div>
+                          <textarea
+                            value={editComment}
+                            onChange={(e) => setEditComment(e.target.value)}
+                            rows={3}
+                            disabled={isMutating}
+                            className="w-full p-3 border border-input rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                      ) : (
+                        <p className="text-sm text-foreground mb-4 text-pretty leading-relaxed pl-18">
+                          {review.comment}
+                        </p>
+                      )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
 
                 {/* Load More Button */}
                 {displayedCount < filteredAndSortedReviews.length && (

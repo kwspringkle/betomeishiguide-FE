@@ -24,8 +24,14 @@ import type {
   DishReviewListResponse,
   AddDishReviewRequest,
   AddDishReviewResponse,
+  UpdateDishReviewRequest,
+  UpdateDishReviewResponse,
+  DeleteDishReviewResponse,
   AddRestaurantReviewRequest,
   AddRestaurantReviewResponse,
+  UpdateRestaurantReviewRequest,
+  UpdateRestaurantReviewResponse,
+  DeleteRestaurantReviewResponse,
   RestaurantReviewListResponse,
   SearchResponse,
   CategorizedSearchResponse,
@@ -353,6 +359,25 @@ export const dishApi = {
       body: JSON.stringify(request),
     });
   },
+
+  /**
+   * Update a dish review (only owner can update)
+   */
+  updateDishReview: async (request: UpdateDishReviewRequest): Promise<UpdateDishReviewResponse> => {
+    return apiFetch<UpdateDishReviewResponse>(`/dishReview`, {
+      method: 'PUT',
+      body: JSON.stringify(request),
+    });
+  },
+
+  /**
+   * Delete a dish review (only owner can delete)
+   */
+  deleteDishReview: async (dishReviewId: number): Promise<DeleteDishReviewResponse> => {
+    return apiFetch<DeleteDishReviewResponse>(`/dishReview?dishReviewId=${dishReviewId}`, {
+      method: 'DELETE',
+    });
+  },
 };
 
 /**
@@ -476,6 +501,25 @@ export const restaurantApi = {
   getRestaurantReviews: async (restaurantId: number): Promise<RestaurantReviewListResponse> => {
     return apiFetch<RestaurantReviewListResponse>(`/restaurantReview?restaurantId=${restaurantId}`, {
       method: 'GET',
+    });
+  },
+
+  /**
+   * Update a restaurant review (only owner can update)
+   */
+  updateRestaurantReview: async (request: UpdateRestaurantReviewRequest): Promise<UpdateRestaurantReviewResponse> => {
+    return apiFetch<UpdateRestaurantReviewResponse>(`/restaurantReview`, {
+      method: 'PUT',
+      body: JSON.stringify(request),
+    });
+  },
+
+  /**
+   * Delete a restaurant review (only owner can delete)
+   */
+  deleteRestaurantReview: async (restaurantReviewId: number): Promise<DeleteRestaurantReviewResponse> => {
+    return apiFetch<DeleteRestaurantReviewResponse>(`/restaurantReview?restaurantReviewId=${restaurantReviewId}`, {
+      method: 'DELETE',
     });
   },
 };

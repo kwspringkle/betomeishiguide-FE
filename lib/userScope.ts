@@ -12,6 +12,24 @@ export function getUserScopeFromToken(token: string | null): string | null {
   }
 }
 
+export function getUserIdFromToken(token: string | null): number | null {
+  if (!token) return null
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]))
+    const userId = payload?.userId
+    const n = typeof userId === "number" ? userId : Number(userId)
+    return Number.isFinite(n) ? n : null
+  } catch {
+    return null
+  }
+}
+
+export function getCurrentUserId(): number | null {
+  if (typeof window === "undefined") return null
+  const token = localStorage.getItem("token")
+  return getUserIdFromToken(token)
+}
+
 export function getCurrentUserScope(): string | null {
   if (typeof window === "undefined") return null
   const token = localStorage.getItem("token")

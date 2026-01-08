@@ -243,6 +243,7 @@ export interface DishReview {
   fullName: string;
   national?: string | null;
   rate: number;
+  userId: number;
 }
 
 export interface DishReviewListResponse {
@@ -282,6 +283,39 @@ export interface RestaurantReview {
   rating: number;
   restaurantName: string;
   restaurantReviewId: number;
+  userId: number;
+}
+
+export interface UpdateDishReviewRequest {
+  id: number;
+  rating: number;
+  comment: string;
+}
+
+export interface UpdateDishReviewResponse {
+  status: string;
+  message: string;
+}
+
+export interface DeleteDishReviewResponse {
+  status: string;
+  message: string;
+}
+
+export interface UpdateRestaurantReviewRequest {
+  id: number;
+  rating: number;
+  comment: string;
+}
+
+export interface UpdateRestaurantReviewResponse {
+  status: string;
+  message: string;
+}
+
+export interface DeleteRestaurantReviewResponse {
+  status: string;
+  message: string;
 }
 
 export interface RestaurantReviewListResponse {
